@@ -24,11 +24,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useStudyData } from '@/hooks/useStudyData'
+import { useToast } from '@/hooks/use-toast'
 
 export function StudyMaterials() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedSubject, setSelectedSubject] = useState('all')
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  
+  const { studyMaterials, saveMaterial, deleteMaterial, updateMaterialViews } = useStudyData()
+  const { toast } = useToast()
   
   // Form state for creating new materials
   const [newMaterial, setNewMaterial] = useState({
@@ -38,54 +43,6 @@ export function StudyMaterials() {
     content: '',
     tags: ''
   })
-
-  // Mock data - using state so we can add new materials
-  const [materials, setMaterials] = useState([
-    {
-      id: '1',
-      title: 'Calculus Integration Techniques',
-      subject: 'Mathematics',
-      type: 'note',
-      content: 'Comprehensive notes on integration by parts, substitution, and partial fractions...',
-      tags: ['calculus', 'integration', 'advanced'],
-      createdAt: '2024-01-15',
-      isPublic: true,
-      views: 45
-    },
-    {
-      id: '2',
-      title: 'Physics Formulas Flashcards',
-      subject: 'Physics',
-      type: 'flashcard',
-      content: '50 essential physics formulas with explanations',
-      tags: ['formulas', 'mechanics', 'electricity'],
-      createdAt: '2024-01-14',
-      isPublic: false,
-      views: 23
-    },
-    {
-      id: '3',
-      title: 'Organic Chemistry Reactions',
-      subject: 'Chemistry',
-      type: 'document',
-      content: 'Complete guide to organic chemistry reactions and mechanisms',
-      tags: ['organic', 'reactions', 'mechanisms'],
-      createdAt: '2024-01-13',
-      isPublic: true,
-      views: 67
-    },
-    {
-      id: '4',
-      title: 'Linear Algebra Video Series',
-      subject: 'Mathematics',
-      type: 'video',
-      content: 'Video explanations of linear algebra concepts',
-      tags: ['linear-algebra', 'vectors', 'matrices'],
-      createdAt: '2024-01-12',
-      isPublic: true,
-      views: 89
-    }
-  ])
 
   const subjects = ['all', 'Mathematics', 'Physics', 'Chemistry', 'Biology', 'Computer Science']
 
@@ -118,44 +75,79 @@ export function StudyMaterials() {
   }
 
   // Handle creating new material
-  const handleCreateMaterial = () => {
+  const handleCreateMaterial = async () => {
     if (!newMaterial.title || !newMaterial.subject || !newMaterial.type || !newMaterial.content) {
-      alert('Please fill in all required fields')
+      toast({
+        title: "Missing fields",
+        description: "Please fill in all required fields",
+        variant: "destructive"
+      })
       return
     }
 
-    const newId = (materials.length + 1).toString()
-    const tagsArray = newMaterial.tags.split(',').map(tag => tag.trim()).filter(tag => tag)
-    
-    const materialToAdd = {
-      id: newId,
-      title: newMaterial.title,
-      subject: newMaterial.subject,
-      type: newMaterial.type,
-      content: newMaterial.content,
-      tags: tagsArray,
-      createdAt: new Date().toISOString().split('T')[0],
-      isPublic: false,
-      views: 0
+    try {
+      const tagsArray = newMaterial.tags.split(',').map(tag => tag.trim()).filter(tag => tag)
+      
+      await saveMaterial({
+        title: newMaterial.title,
+        subject: newMaterial.subject,
+        materialType: newMaterial.type as 'note' | 'flashcard' | 'document' | 'video',
+        content: newMaterial.content,
+        tags: tagsArray,
+        isPublic: false
+      })
+      
+      toast({
+        title: "Material created! 📚",
+        description: `Your ${newMaterial.type} "${newMaterial.title}" has been saved.`,
+      })
+      
+      // Reset form
+      setNewMaterial({
+        title: '',
+        subject: '',
+        type: '',
+        content: '',
+        tags: ''
+      })
+      
+      setIsCreateDialogOpen(false)
+    } catch (error) {
+      toast({
+        title: "Error creating material",
+        description: "There was a problem saving your material.",
+        variant: "destructive"
+      })
     }
-
-    setMaterials(prev => [materialToAdd, ...prev])
-    
-    // Reset form
-    setNewMaterial({
-      title: '',
-      subject: '',
-      type: '',
-      content: '',
-      tags: ''
-    })
-    
-    setIsCreateDialogOpen(false)
   }
 
-  const filteredMaterials = materials.filter(material => {
+  const handleDeleteMaterial = async (materialId: string, title: string) => {
+    try {
+      await deleteMaterial(materialId)
+      toast({
+        title: "Material deleted",
+        description: `"${title}" has been removed.`,
+      })
+    } catch (error) {
+      toast({
+        title: "Error deleting material",
+        description: "There was a problem deleting the material.",
+        variant: "destructive"
+      })
+    }
+  }
+
+  const handleViewMaterial = async (materialId: string) => {
+    try {
+      await updateMaterialViews(materialId)
+    } catch (error) {
+      console.error('Error updating views:', error)
+    }
+  }
+
+  const filteredMaterials = studyMaterials.filter(material => {
     const matchesSearch = material.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         material.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         (material.content || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
                          material.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
     const matchesSubject = selectedSubject === 'all' || material.subject === selectedSubject
     return matchesSearch && matchesSubject
@@ -296,7 +288,7 @@ export function StudyMaterials() {
                   <span className="text-sm font-medium">Notes</span>
                 </div>
                 <p className="text-2xl font-bold text-gray-900 mt-1">
-                  {materials.filter(m => m.type === 'note').length}
+                  {studyMaterials.filter(m => m.materialType === 'note').length}
                 </p>
               </CardContent>
             </Card>
@@ -307,7 +299,7 @@ export function StudyMaterials() {
                   <span className="text-sm font-medium">Flashcards</span>
                 </div>
                 <p className="text-2xl font-bold text-gray-900 mt-1">
-                  {materials.filter(m => m.type === 'flashcard').length}
+                  {studyMaterials.filter(m => m.materialType === 'flashcard').length}
                 </p>
               </CardContent>
             </Card>
@@ -318,7 +310,7 @@ export function StudyMaterials() {
                   <span className="text-sm font-medium">Documents</span>
                 </div>
                 <p className="text-2xl font-bold text-gray-900 mt-1">
-                  {materials.filter(m => m.type === 'document').length}
+                  {studyMaterials.filter(m => m.materialType === 'document').length}
                 </p>
               </CardContent>
             </Card>
@@ -329,7 +321,7 @@ export function StudyMaterials() {
                   <span className="text-sm font-medium">Videos</span>
                 </div>
                 <p className="text-2xl font-bold text-gray-900 mt-1">
-                  {materials.filter(m => m.type === 'video').length}
+                  {studyMaterials.filter(m => m.materialType === 'video').length}
                 </p>
               </CardContent>
             </Card>
@@ -338,15 +330,15 @@ export function StudyMaterials() {
           {/* Materials Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
             {filteredMaterials.map((material) => {
-              const TypeIcon = getTypeIcon(material.type)
+              const TypeIcon = getTypeIcon(material.materialType)
               return (
                 <Card key={material.id} className="hover:shadow-md transition-shadow">
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between">
                       <div className="flex items-center space-x-2">
                         <TypeIcon className="w-4 h-4 text-gray-600" />
-                        <Badge className={getTypeColor(material.type)}>
-                          {material.type}
+                        <Badge className={getTypeColor(material.materialType)}>
+                          {material.materialType}
                         </Badge>
                       </div>
                       <div className="flex items-center space-x-1">
@@ -356,7 +348,11 @@ export function StudyMaterials() {
                         <Button variant="ghost" size="sm">
                           <Share className="w-4 h-4" />
                         </Button>
-                        <Button variant="ghost" size="sm">
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => handleDeleteMaterial(material.id, material.title)}
+                        >
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
@@ -395,7 +391,11 @@ export function StudyMaterials() {
                     </div>
 
                     <div className="flex space-x-2">
-                      <Button size="sm" className="flex-1">
+                      <Button 
+                        size="sm" 
+                        className="flex-1"
+                        onClick={() => handleViewMaterial(material.id)}
+                      >
                         <Eye className="w-4 h-4 mr-1" />
                         View
                       </Button>

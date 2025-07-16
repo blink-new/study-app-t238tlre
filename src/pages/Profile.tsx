@@ -26,6 +26,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { useStudyData } from '@/hooks/useStudyData'
+import { useToast } from '@/hooks/use-toast'
+import blink from '@/blink/client'
 
 interface ProfileProps {
   user?: any
@@ -33,24 +36,31 @@ interface ProfileProps {
 
 export function Profile({ user }: ProfileProps) {
   const [isEditing, setIsEditing] = useState(false)
+  
+  const { user: userData, studySessions, studyMaterials, updateProfile } = useStudyData()
+  const { toast } = useToast()
+  
+  // Use userData from hook if available, fallback to prop
+  const currentUser = userData || user
+  
   const [editedProfile, setEditedProfile] = useState({
-    displayName: user?.displayName || 'Student',
-    university: user?.university || 'MIT',
-    major: user?.major || 'Computer Science',
-    yearOfStudy: user?.yearOfStudy || 2,
-    bio: user?.bio || 'Passionate about learning and helping others succeed in their academic journey.'
+    displayName: currentUser?.displayName || 'Student',
+    university: currentUser?.university || 'MIT',
+    major: currentUser?.major || 'Computer Science',
+    yearOfStudy: currentUser?.yearOfStudy || 2,
+    bio: currentUser?.bio || 'Passionate about learning and helping others succeed in their academic journey.'
   })
 
-  // Mock data
+  // Calculate stats from actual data
   const profileStats = {
-    level: user?.level || 12,
-    points: user?.points || 2450,
-    studyStreak: user?.studyStreak || 15,
-    totalStudyHours: user?.totalStudyHours || 156,
-    materialsCreated: 23,
-    friendsCount: 45,
-    quizzesCompleted: 67,
-    averageScore: 82
+    level: currentUser?.level || 1,
+    points: currentUser?.points || 0,
+    studyStreak: currentUser?.studyStreak || 0,
+    totalStudyHours: currentUser?.totalStudyHours || 0,
+    materialsCreated: studyMaterials.length,
+    friendsCount: 0, // Would come from friends data
+    quizzesCompleted: 0, // Would come from quiz attempts
+    averageScore: 0 // Would be calculated from quiz attempts
   }
 
   const achievements = [
@@ -152,21 +162,40 @@ export function Profile({ user }: ProfileProps) {
     }
   ]
 
-  const handleSaveProfile = () => {
-    // Here you would typically save to the backend
-    console.log('Saving profile:', editedProfile)
-    setIsEditing(false)
+  const handleSaveProfile = async () => {
+    try {
+      await updateProfile(editedProfile)
+      toast({
+        title: "Profile updated! ✨",
+        description: "Your profile information has been saved successfully.",
+      })
+      setIsEditing(false)
+    } catch (error) {
+      toast({
+        title: "Error updating profile",
+        description: "There was a problem saving your profile changes.",
+        variant: "destructive"
+      })
+    }
   }
 
   const handleCancelEdit = () => {
     setEditedProfile({
-      displayName: user?.displayName || 'Student',
-      university: user?.university || 'MIT',
-      major: user?.major || 'Computer Science',
-      yearOfStudy: user?.yearOfStudy || 2,
-      bio: user?.bio || 'Passionate about learning and helping others succeed in their academic journey.'
+      displayName: currentUser?.displayName || 'Student',
+      university: currentUser?.university || 'MIT',
+      major: currentUser?.major || 'Computer Science',
+      yearOfStudy: currentUser?.yearOfStudy || 2,
+      bio: currentUser?.bio || 'Passionate about learning and helping others succeed in their academic journey.'
     })
     setIsEditing(false)
+  }
+
+  const handleSignOut = () => {
+    blink.auth.logout()
+    toast({
+      title: "Signed out",
+      description: "You have been successfully signed out.",
+    })
   }
 
   const getActivityIcon = (type: string) => {
@@ -465,7 +494,11 @@ export function Profile({ user }: ProfileProps) {
               <h3 className="font-semibold text-gray-900">Account</h3>
               <p className="text-sm text-gray-600">Manage your account settings</p>
             </div>
-            <Button variant="outline" className="text-red-600 border-red-200 hover:bg-red-50">
+            <Button 
+              variant="outline" 
+              className="text-red-600 border-red-200 hover:bg-red-50"
+              onClick={handleSignOut}
+            >
               <LogOut className="w-4 h-4 mr-2" />
               Sign Out
             </Button>

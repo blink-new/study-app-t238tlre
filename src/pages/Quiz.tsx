@@ -26,6 +26,8 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { useStudyData } from '@/hooks/useStudyData'
+import { useToast } from '@/hooks/use-toast'
 
 export function Quiz() {
   const [searchQuery, setSearchQuery] = useState('')
@@ -35,49 +37,68 @@ export function Quiz() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [selectedAnswer, setSelectedAnswer] = useState('')
   const [quizResults, setQuizResults] = useState<any>(null)
+  const [userAnswers, setUserAnswers] = useState<number[]>([])
 
-  // Mock data
-  const quizzes = [
+  const { quizzes, saveQuiz, user } = useStudyData()
+  const { toast } = useToast()
+
+  // Sample quiz data for demonstration
+  const sampleQuizzes = [
     {
-      id: '1',
+      id: 'sample_1',
+      userId: 'system',
       title: 'Calculus Fundamentals',
       subject: 'Mathematics',
-      difficulty: 'medium',
-      questions: 15,
-      timeLimit: 30,
+      difficulty: 'medium' as const,
+      timeLimitMinutes: 30,
+      isPublic: true,
       attempts: 234,
       averageScore: 78,
-      creator: 'Dr. Smith',
-      isPublic: true,
-      tags: ['calculus', 'derivatives', 'integrals']
+      tags: ['calculus', 'derivatives', 'integrals'],
+      questions: [
+        {
+          id: '1',
+          question: 'What is the derivative of x²?',
+          options: ['2x', 'x', '2', 'x²'],
+          correctAnswer: 0,
+          explanation: 'The derivative of x² is 2x using the power rule.'
+        },
+        {
+          id: '2',
+          question: 'What is the integral of 2x?',
+          options: ['x²', 'x² + C', '2', '2x + C'],
+          correctAnswer: 1,
+          explanation: 'The integral of 2x is x² + C, where C is the constant of integration.'
+        }
+      ],
+      createdAt: '2024-01-15'
     },
     {
-      id: '2',
+      id: 'sample_2',
+      userId: 'system',
       title: 'Physics Mechanics',
       subject: 'Physics',
-      difficulty: 'hard',
-      questions: 20,
-      timeLimit: 45,
+      difficulty: 'hard' as const,
+      timeLimitMinutes: 45,
+      isPublic: true,
       attempts: 156,
       averageScore: 65,
-      creator: 'Prof. Johnson',
-      isPublic: true,
-      tags: ['mechanics', 'forces', 'motion']
-    },
-    {
-      id: '3',
-      title: 'Organic Chemistry Basics',
-      subject: 'Chemistry',
-      difficulty: 'easy',
-      questions: 10,
-      timeLimit: 20,
-      attempts: 89,
-      averageScore: 85,
-      creator: 'You',
-      isPublic: false,
-      tags: ['organic', 'molecules', 'reactions']
+      tags: ['mechanics', 'forces', 'motion'],
+      questions: [
+        {
+          id: '1',
+          question: 'What is Newton\'s second law?',
+          options: ['F = ma', 'E = mc²', 'v = u + at', 'P = mv'],
+          correctAnswer: 0,
+          explanation: 'Newton\'s second law states that Force equals mass times acceleration.'
+        }
+      ],
+      createdAt: '2024-01-14'
     }
   ]
+
+  // Combine user quizzes with sample quizzes
+  const allQuizzes = [...quizzes, ...sampleQuizzes]
 
   const recentAttempts = [
     {
@@ -138,31 +159,51 @@ export function Quiz() {
   }
 
   const startQuiz = (quiz: any) => {
-    setCurrentQuiz({
-      ...quiz,
-      questions: sampleQuestions
-    })
+    setCurrentQuiz(quiz)
     setCurrentQuestionIndex(0)
     setSelectedAnswer('')
     setQuizResults(null)
+    setUserAnswers([])
+    
+    toast({
+      title: "Quiz started! 🧠",
+      description: `Good luck with "${quiz.title}". Take your time!`,
+    })
   }
 
   const submitAnswer = () => {
     if (!selectedAnswer) return
 
-    const isCorrect = parseInt(selectedAnswer) === currentQuiz.questions[currentQuestionIndex].correctAnswer
+    const answerIndex = parseInt(selectedAnswer)
+    const newAnswers = [...userAnswers]
+    newAnswers[currentQuestionIndex] = answerIndex
+    setUserAnswers(newAnswers)
     
     if (currentQuestionIndex < currentQuiz.questions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1)
       setSelectedAnswer('')
     } else {
-      // Quiz completed
+      // Quiz completed - calculate results
+      const correctAnswers = newAnswers.reduce((count, answer, index) => {
+        return count + (answer === currentQuiz.questions[index].correctAnswer ? 1 : 0)
+      }, 0)
+      
+      const score = Math.round((correctAnswers / currentQuiz.questions.length) * 100)
+      const passed = score >= 70
+      
       setQuizResults({
-        score: 85,
+        score,
         totalQuestions: currentQuiz.questions.length,
-        correctAnswers: Math.floor(currentQuiz.questions.length * 0.85),
-        timeSpent: 25,
-        passed: true
+        correctAnswers,
+        timeSpent: Math.floor(Math.random() * 20) + 10, // Mock time
+        passed,
+        answers: newAnswers
+      })
+
+      toast({
+        title: passed ? "Quiz completed! 🎉" : "Quiz completed",
+        description: `You scored ${score}% (${correctAnswers}/${currentQuiz.questions.length} correct)`,
+        variant: passed ? "default" : "destructive"
       })
     }
   }
@@ -180,7 +221,7 @@ export function Quiz() {
     setQuizResults(null)
   }
 
-  const filteredQuizzes = quizzes.filter(quiz => {
+  const filteredQuizzes = allQuizzes.filter(quiz => {
     const matchesSearch = quiz.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          quiz.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
     const matchesSubject = selectedSubject === 'all' || quiz.subject === selectedSubject
@@ -436,11 +477,11 @@ export function Quiz() {
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div className="flex items-center space-x-1">
                       <Target className="w-4 h-4 text-gray-500" />
-                      <span>{quiz.questions} questions</span>
+                      <span>{quiz.questions?.length || 0} questions</span>
                     </div>
                     <div className="flex items-center space-x-1">
                       <Clock className="w-4 h-4 text-gray-500" />
-                      <span>{quiz.timeLimit} min</span>
+                      <span>{quiz.timeLimitMinutes} min</span>
                     </div>
                     <div className="flex items-center space-x-1">
                       <Users className="w-4 h-4 text-gray-500" />

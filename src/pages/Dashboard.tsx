@@ -18,6 +18,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
+import { useStudyData } from '@/hooks/useStudyData'
+import { useToast } from '@/hooks/use-toast'
 
 interface DashboardProps {
   user?: any
@@ -27,18 +29,31 @@ export function Dashboard({ user }: DashboardProps) {
   const [isStudying, setIsStudying] = useState(false)
   const [studyTime, setStudyTime] = useState(0)
   const [currentSubject, setCurrentSubject] = useState('')
+  const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null)
+  
+  const { user: userData, studySessions, saveStudySession } = useStudyData()
+  const { toast } = useToast()
 
-  // Mock data for demonstration
+  // Use userData from hook if available, fallback to prop
+  const currentUser = userData || user
+
+  // Calculate today's progress
+  const today = new Date().toISOString().split('T')[0]
+  const todaysSessions = studySessions.filter(session => session.sessionDate === today)
+  const todayProgress = todaysSessions.reduce((total, session) => total + (session.durationMinutes / 60), 0)
   const todayGoal = 4 // hours
-  const todayProgress = 2.5 // hours
-  const weeklyStreak = user?.studyStreak || 7
-  const totalPoints = user?.points || 1250
+  
+  const weeklyStreak = currentUser?.studyStreak || 0
+  const totalPoints = currentUser?.points || 0
 
-  const recentSessions = [
-    { subject: 'Mathematics', duration: 90, date: 'Today' },
-    { subject: 'Physics', duration: 60, date: 'Yesterday' },
-    { subject: 'Chemistry', duration: 120, date: 'Yesterday' },
-  ]
+  // Get recent sessions (last 5)
+  const recentSessions = studySessions.slice(0, 5).map(session => ({
+    subject: session.subject,
+    duration: session.durationMinutes,
+    date: session.sessionDate === today ? 'Today' : 
+          session.sessionDate === new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0] ? 'Yesterday' :
+          new Date(session.sessionDate).toLocaleDateString()
+  }))
 
   const friendsActivity = [
     { name: 'Sarah Chen', action: 'completed 2h of Biology', time: '30 min ago', avatar: 'SC' },
@@ -47,7 +62,7 @@ export function Dashboard({ user }: DashboardProps) {
   ]
 
   const achievements = [
-    { name: 'Study Streak', description: '7 days in a row', icon: Flame, color: 'text-orange-500' },
+    { name: 'Study Streak', description: `${weeklyStreak} days in a row`, icon: Flame, color: 'text-orange-500' },
     { name: 'Night Owl', description: 'Study after 10 PM', icon: Star, color: 'text-purple-500' },
     { name: 'Social Learner', description: 'Join 5 study groups', icon: Users, color: 'text-blue-500' },
   ]
@@ -74,16 +89,49 @@ export function Dashboard({ user }: DashboardProps) {
       setCurrentSubject('General Study')
     }
     setIsStudying(true)
+    setSessionStartTime(new Date())
+    toast({
+      title: "Study session started!",
+      description: `Good luck with your ${currentSubject} session.`,
+    })
   }
 
   const pauseStudySession = () => {
     setIsStudying(false)
+    toast({
+      title: "Session paused",
+      description: "Take a break and come back when ready!",
+    })
   }
 
-  const stopStudySession = () => {
+  const stopStudySession = async () => {
+    if (studyTime > 0 && currentSubject && sessionStartTime) {
+      try {
+        await saveStudySession({
+          subject: currentSubject,
+          durationMinutes: Math.floor(studyTime / 60),
+          sessionDate: new Date().toISOString().split('T')[0],
+          notes: `Study session completed`
+        })
+        
+        const pointsEarned = Math.floor(studyTime / 60) * 2
+        toast({
+          title: "Session completed! 🎉",
+          description: `Great job! You earned ${pointsEarned} points for studying ${currentSubject}.`,
+        })
+      } catch (error) {
+        toast({
+          title: "Error saving session",
+          description: "There was a problem saving your study session.",
+          variant: "destructive"
+        })
+      }
+    }
+    
     setIsStudying(false)
     setStudyTime(0)
     setCurrentSubject('')
+    setSessionStartTime(null)
   }
 
   return (
@@ -91,11 +139,19 @@ export function Dashboard({ user }: DashboardProps) {
       {/* Welcome Header */}
       <div className="bg-gradient-to-r from-orange-500 to-blue-500 rounded-xl p-6 text-white">
         <h1 className="text-2xl font-bold mb-2">
-          Welcome back, {user?.displayName || 'Student'}! 👋
+          Welcome back, {currentUser?.displayName || 'Student'}! 👋
         </h1>
         <p className="text-orange-100">
           Ready to continue your learning journey? You're doing great!
         </p>
+        {weeklyStreak > 0 && (
+          <div className="mt-3 flex items-center space-x-2">
+            <Flame className="w-5 h-5 text-orange-200" />
+            <span className="text-orange-100">
+              {weeklyStreak} day study streak! Keep it up!
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Study Timer Card */}
@@ -223,20 +279,28 @@ export function Dashboard({ user }: DashboardProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {recentSessions.map((session, index) => (
-              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div>
-                  <p className="font-medium text-gray-900">{session.subject}</p>
-                  <p className="text-sm text-gray-600">{session.date}</p>
+            {recentSessions.length > 0 ? (
+              recentSessions.map((session, index) => (
+                <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="font-medium text-gray-900">{session.subject}</p>
+                    <p className="text-sm text-gray-600">{session.date}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-medium text-gray-900">{session.duration}m</p>
+                    <Badge variant="secondary" className="text-xs">
+                      Completed
+                    </Badge>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-medium text-gray-900">{session.duration}m</p>
-                  <Badge variant="secondary" className="text-xs">
-                    Completed
-                  </Badge>
-                </div>
+              ))
+            ) : (
+              <div className="text-center py-6">
+                <Clock className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                <p className="text-gray-600 text-sm">No study sessions yet</p>
+                <p className="text-gray-500 text-xs">Start your first session above!</p>
               </div>
-            ))}
+            )}
           </CardContent>
         </Card>
 
